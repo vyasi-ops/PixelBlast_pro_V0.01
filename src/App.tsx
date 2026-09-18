@@ -130,8 +130,10 @@ function App() {
   const trailRef = useRef<Vec2[]>([])
   const frameRef = useRef(0)
   const sizeRef = useRef({ w: 800, h: 600 })
+  const highScoreRef = useRef(highScore)
 
   stateRef.current = gameState
+  highScoreRef.current = highScore
 
   // Init stars
   const initStars = useCallback((w: number, h: number) => {
@@ -480,7 +482,7 @@ function App() {
             } else {
               addParticles(px, py, '#ff00ff', 30, 5)
               audio.death()
-              if (scoreRef.current > highScore) {
+              if (scoreRef.current > highScoreRef.current) {
                 setHighScore(scoreRef.current)
                 localStorage.setItem('spaceDodgeHigh', scoreRef.current.toString())
               }
@@ -512,7 +514,7 @@ function App() {
             } else {
               addParticles(px, py, '#ff4400', 30, 5)
               audio.death()
-              if (scoreRef.current > highScore) {
+              if (scoreRef.current > highScoreRef.current) {
                 setHighScore(scoreRef.current)
                 localStorage.setItem('spaceDodgeHigh', scoreRef.current.toString())
               }
@@ -731,21 +733,23 @@ function App() {
         }
       }
 
-      if (shakeRef.current > 0 || gameState === 'playing') {
+      if (shakeRef.current > 0 || stateRef.current === 'playing') {
         if (shakeRef.current > 0) ctx.restore()
       }
 
-      requestAnimationFrame(loop)
+      frameRef.current = requestAnimationFrame(loop)
     }
 
-    requestAnimationFrame(loop)
+    frameRef.current = requestAnimationFrame(loop)
 
     return () => {
       window.removeEventListener('resize', resize)
       window.removeEventListener('keydown', handleKeyDown)
       window.removeEventListener('keyup', handleKeyUp)
+      cancelAnimationFrame(frameRef.current)
     }
-  }, [gameState, highScore, initStars, spawnAsteroid, spawnMissile, spawnGem, spawnPowerUp, startGame])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className="w-full h-screen overflow-hidden relative bg-[#06060f]">
