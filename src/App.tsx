@@ -161,8 +161,8 @@ function App() {
     const { w, h } = sizeRef.current
     const side = Math.floor(Math.random() * 4)
     let x = 0, y = 0, vx = 0, vy = 0
-    const baseSpeed = 1.5 + waveRef.current * 0.3
-    const speed = baseSpeed * (0.7 + Math.random() * 0.6)
+    const baseSpeed = 0.9 + waveRef.current * 0.2
+    const speed = baseSpeed * (0.7 + Math.random() * 0.5)
     const size = 15 + Math.random() * 30
 
     switch (side) {
@@ -184,7 +184,7 @@ function App() {
     const { w, h } = sizeRef.current
     const side = Math.floor(Math.random() * 4)
     let x = 0, y = 0
-    const speed = 2.5 + waveRef.current * 0.2
+    const speed = 1.5 + waveRef.current * 0.15
 
     switch (side) {
       case 0: x = Math.random() * w; y = -10; break
@@ -210,7 +210,7 @@ function App() {
     const { w, h } = sizeRef.current
     const side = Math.floor(Math.random() * 4)
     let x = 0, y = 0, vx = 0, vy = 0
-    const speed = 1 + Math.random() * 1.5
+    const speed = 0.6 + Math.random() * 0.8
 
     switch (side) {
       case 0: x = Math.random() * w; y = -10; vx = (Math.random() - 0.5) * speed; vy = speed; break
@@ -228,7 +228,7 @@ function App() {
     const type = types[Math.floor(Math.random() * types.length)]
     const side = Math.floor(Math.random() * 4)
     let x = 0, y = 0, vx = 0, vy = 0
-    const speed = 1
+    const speed = 0.6
 
     switch (side) {
       case 0: x = Math.random() * w; y = -15; vx = (Math.random() - 0.5) * speed; vy = speed; break
@@ -346,7 +346,7 @@ function App() {
         frameRef.current++
 
         // Wave system
-        const newWave = Math.floor(gameTimeRef.current / 1800) + 1 // every 30s
+        const newWave = Math.floor(gameTimeRef.current / 2700) + 1 // every 45s
         if (newWave !== waveRef.current) {
           waveRef.current = newWave
           setWave(newWave)
@@ -362,8 +362,8 @@ function App() {
         setActivePowers({ ...powersRef.current })
 
         // Move player
-        const accel = 0.5
-        const friction = 0.88
+        const accel = 0.35
+        const friction = 0.9
         const keys = keysRef.current
         if (keys.has('arrowleft') || keys.has('a')) playerVelRef.current.x -= accel * dt
         if (keys.has('arrowright') || keys.has('d')) playerVelRef.current.x += accel * dt
@@ -384,14 +384,14 @@ function App() {
         }
 
         // Spawn asteroids
-        const asteroidInterval = Math.max(15, 50 - waveRef.current * 4)
+        const asteroidInterval = Math.max(30, 80 - waveRef.current * 5)
         if (gameTimeRef.current - lastSpawnRef.current > asteroidInterval) {
           spawnAsteroid()
           lastSpawnRef.current = gameTimeRef.current
         }
 
         // Spawn missiles
-        const missileInterval = Math.max(60, 180 - waveRef.current * 15)
+        const missileInterval = Math.max(120, 300 - waveRef.current * 20)
         if (gameTimeRef.current - lastMissileRef.current > missileInterval) {
           spawnMissile()
           lastMissileRef.current = gameTimeRef.current
@@ -417,18 +417,8 @@ function App() {
           return a.x > -100 && a.x < w + 100 && a.y > -100 && a.y < h + 100
         })
 
-        // Update missiles (track player)
+        // Update missiles (straight line, no homing)
         missilesRef.current = missilesRef.current.filter(m => {
-          const px = playerRef.current.x
-          const py = playerRef.current.y
-          const targetAngle = Math.atan2(py - m.y, px - m.x)
-          let angleDiff = targetAngle - m.angle
-          while (angleDiff > Math.PI) angleDiff -= Math.PI * 2
-          while (angleDiff < -Math.PI) angleDiff += Math.PI * 2
-          m.angle += angleDiff * 0.03 * dt
-          const speed = Math.sqrt(m.vx * m.vx + m.vy * m.vy)
-          m.vx = Math.cos(m.angle) * speed
-          m.vy = Math.sin(m.angle) * speed
           m.x += m.vx * dt
           m.y += m.vy * dt
           m.trail.push({ x: m.x, y: m.y })
