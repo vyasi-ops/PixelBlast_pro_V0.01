@@ -1,324 +1,347 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  timestamp: Date
+interface Obstacle {
+  id: number
+  x: number
+  y: number
+  vx: number
+  vy: number
+  size: number
 }
 
-interface Conversation {
-  id: string
-  title: string
-  messages: Message[]
-  createdAt: Date
+interface Particle {
+  id: number
+  x: number
+  y: number
+  vx: number
+  vy: number
+  life: number
 }
-
-const sampleResponses = [
-  "That's a great question! Let me think about this...\n\nBased on my understanding, I'd say the key factors to consider are context, clarity, and creativity. Each of these plays an important role in how we approach problems and communicate ideas.\n\nWould you like me to elaborate on any specific aspect?",
-  "I'd be happy to help with that! Here's what I think:\n\nThe approach you're describing is quite common and there are several ways to tackle it. The most effective method usually depends on your specific use case and constraints.\n\nLet me know if you'd like more detailed guidance on any particular step.",
-  "Interesting thought! Here's my perspective:\n\nThere are multiple angles to consider here. The most important thing is to balance efficiency with quality. In practice, this means starting with a clear goal and iterating based on feedback.\n\nIs there a specific part you'd like to dive deeper into?",
-  "Great question! Let me break this down:\n\n1. **First**, consider the fundamentals - understanding the basics is crucial\n2. **Second**, look at real-world examples to see how theory applies in practice\n3. **Third**, experiment and iterate - learning by doing is often the most effective approach\n\nWould you like me to go into more detail on any of these points?",
-  "I appreciate you asking! Here's what I know:\n\nThis is a topic that has evolved significantly over time. The current best practices emphasize adaptability and continuous learning. The landscape is always changing, so staying up-to-date is important.\n\nFeel free to ask follow-up questions if you'd like more specifics!",
-]
 
 function App() {
-  const [conversations, setConversations] = useState<Conversation[]>([])
-  const [activeConversation, setActiveConversation] = useState<string | null>(null)
-  const [input, setInput] = useState('')
-  const [isTyping, setIsTyping] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
-  const messagesEndRef = useRef<HTMLDivElement>(null)
-  const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const [gameState, setGameState] = useState<'menu' | 'playing' | 'gameover'>('menu')
+  const [score, setScore] = useState(0)
+  const [highScore, setHighScore] = useState(() => {
+    const saved = localStorage.getItem('dodgeHighScore')
+    return saved ? parseInt(saved) : 0
+  })
+  const [playerPos, setPlayerPos] = useState({ x: 50, y: 50 })
+  const [obstacles, setObstacles] = useState<Obstacle[]>([])
+  const [particles, setParticles] = useState<Particle[]>([])
+  
+  const gameLoopRef = useRef<number>()
+  const lastSpawnRef = useRef(0)
+  const obstacleIdRef = useRef(0)
+  const particleIdRef = useRef(0)
+  const keysRef = useRef<Set<string>>(new Set())
+  const playerRef = useRef(playerPos)
+  const obstaclesRef = useRef(obstacles)
+  const scoreRef = useRef(score)
 
-  const currentConversation = conversations.find(c => c.id === activeConversation)
+  playerRef.current = playerPos
+  obstaclesRef.current = obstacles
+  scoreRef.current = score
 
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [currentConversation?.messages])
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.style.height = 'auto'
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 200) + 'px'
-    }
-  }, [input])
-
-  const createNewConversation = () => {
-    const newConv: Conversation = {
-      id: Date.now().toString(),
-      title: 'New Chat',
-      messages: [],
-      createdAt: new Date()
-    }
-    setConversations(prev => [newConv, ...prev])
-    setActiveConversation(newConv.id)
-    return newConv.id
+  const startGame = () => {
+    setGameState('playing')
+    setScore(0)
+    setPlayerPos({ x: 50, y: 50 })
+    setObstacles([])
+    setParticles([])
+    lastSpawnRef.current = Date.now()
+    obstacleIdRef.current = 0
   }
 
-  const sendMessage = async () => {
-    if (!input.trim() || isTyping) return
+  const endGame = useCallback(() => {
+    setGameState('gameover')
+    if (scoreRef.current > highScore) {
+      setHighScore(scoreRef.current)
+      localStorage.setItem('dodgeHighScore', scoreRef.current.toString())
+    }
+    if (gameLoopRef.current) {
+      cancelAnimationFrame(gameLoopRef.current)
+    }
+  }, [highScore])
 
-    let convId = activeConversation
-    if (!convId) {
-      convId = createNewConversation()
+  const spawnObstacle = useCallback(() => {
+    const side = Math.floor(Math.random() * 4)
+    let x = 0, y = 0, vx = 0, vy = 0
+    const speed = 0.3 + (scoreRef.current / 500) * 0.5
+    const size = 20 + Math.random() * 20
+
+    switch (side) {
+      case 0: // top
+        x = Math.random() * 100
+        y = -5
+        vx = (Math.random() - 0.5) * speed
+        vy = speed
+        break
+      case 1: // right
+        x = 105
+        y = Math.random() * 100
+        vx = -speed
+        vy = (Math.random() - 0.5) * speed
+        break
+      case 2: // bottom
+        x = Math.random() * 100
+        y = 105
+        vx = (Math.random() - 0.5) * speed
+        vy = -speed
+        break
+      case 3: // left
+        x = -5
+        y = Math.random() * 100
+        vx = speed
+        vy = (Math.random() - 0.5) * speed
+        break
     }
 
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: input.trim(),
-      timestamp: new Date()
+    return {
+      id: obstacleIdRef.current++,
+      x, y, vx, vy, size
+    }
+  }, [])
+
+  const createExplosion = useCallback((x: number, y: number) => {
+    const newParticles: Particle[] = []
+    for (let i = 0; i < 20; i++) {
+      const angle = (Math.PI * 2 * i) / 20
+      const speed = 2 + Math.random() * 3
+      newParticles.push({
+        id: particleIdRef.current++,
+        x, y,
+        vx: Math.cos(angle) * speed,
+        vy: Math.sin(angle) * speed,
+        life: 1
+      })
+    }
+    setParticles(prev => [...prev, ...newParticles])
+  }, [])
+
+  useEffect(() => {
+    if (gameState !== 'playing') return
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      keysRef.current.add(e.key.toLowerCase())
+    }
+    const handleKeyUp = (e: KeyboardEvent) => {
+      keysRef.current.delete(e.key.toLowerCase())
     }
 
-    setConversations(prev => prev.map(c => {
-      if (c.id === convId) {
-        const updatedMessages = [...c.messages, userMessage]
-        return {
-          ...c,
-          messages: updatedMessages,
-          title: c.messages.length === 0 ? input.trim().slice(0, 40) + (input.trim().length > 40 ? '...' : '') : c.title
+    window.addEventListener('keydown', handleKeyDown)
+    window.addEventListener('keyup', handleKeyUp)
+
+    const gameLoop = () => {
+      const now = Date.now()
+      const deltaTime = 16 // ~60fps
+
+      // Move player
+      const playerSpeed = 0.8
+      let newX = playerRef.current.x
+      let newY = playerRef.current.y
+
+      if (keysRef.current.has('arrowleft') || keysRef.current.has('a')) {
+        newX -= playerSpeed
+      }
+      if (keysRef.current.has('arrowright') || keysRef.current.has('d')) {
+        newX += playerSpeed
+      }
+      if (keysRef.current.has('arrowup') || keysRef.current.has('w')) {
+        newY -= playerSpeed
+      }
+      if (keysRef.current.has('arrowdown') || keysRef.current.has('s')) {
+        newY += playerSpeed
+      }
+
+      newX = Math.max(2, Math.min(98, newX))
+      newY = Math.max(2, Math.min(98, newY))
+
+      setPlayerPos({ x: newX, y: newY })
+
+      // Spawn obstacles
+      const spawnInterval = Math.max(300, 1000 - (scoreRef.current / 10) * 50)
+      if (now - lastSpawnRef.current > spawnInterval) {
+        setObstacles(prev => [...prev, spawnObstacle()])
+        lastSpawnRef.current = now
+      }
+
+      // Update obstacles
+      setObstacles(prev => {
+        const updated = prev.map(obs => ({
+          ...obs,
+          x: obs.x + obs.vx,
+          y: obs.y + obs.vy
+        }))
+
+        // Remove off-screen obstacles
+        const filtered = updated.filter(obs => 
+          obs.x > -10 && obs.x < 110 && obs.y > -10 && obs.y < 110
+        )
+
+        // Check collisions
+        for (const obs of filtered) {
+          const dx = obs.x - newX
+          const dy = obs.y - newY
+          const distance = Math.sqrt(dx * dx + dy * dy)
+          const collisionDistance = (obs.size / 100) * 0.5 + 0.02
+
+          if (distance < collisionDistance) {
+            createExplosion(newX, newY)
+            endGame()
+            return filtered
+          }
         }
+
+        return filtered
+      })
+
+      // Update particles
+      setParticles(prev => 
+        prev
+          .map(p => ({
+            ...p,
+            x: p.x + p.vx * 0.1,
+            y: p.y + p.vy * 0.1,
+            life: p.life - 0.02
+          }))
+          .filter(p => p.life > 0)
+      )
+
+      // Update score
+      setScore(prev => prev + 1)
+
+      gameLoopRef.current = requestAnimationFrame(gameLoop)
+    }
+
+    gameLoopRef.current = requestAnimationFrame(gameLoop)
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown)
+      window.removeEventListener('keyup', handleKeyUp)
+      if (gameLoopRef.current) {
+        cancelAnimationFrame(gameLoopRef.current)
       }
-      return c
-    }))
-
-    setInput('')
-    setIsTyping(true)
-
-    // Simulate AI response delay
-    await new Promise(resolve => setTimeout(resolve, 1000 + Math.random() * 2000))
-
-    const aiResponse: Message = {
-      id: (Date.now() + 1).toString(),
-      role: 'assistant',
-      content: sampleResponses[Math.floor(Math.random() * sampleResponses.length)],
-      timestamp: new Date()
     }
-
-    setConversations(prev => prev.map(c => {
-      if (c.id === convId) {
-        return { ...c, messages: [...c.messages, aiResponse] }
-      }
-      return c
-    }))
-
-    setIsTyping(false)
-  }
-
-  const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      sendMessage()
-    }
-  }
-
-  const deleteConversation = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation()
-    setConversations(prev => prev.filter(c => c.id !== id))
-    if (activeConversation === id) {
-      setActiveConversation(null)
-    }
-  }
+  }, [gameState, spawnObstacle, createExplosion, endGame])
 
   return (
-    <div className="flex h-screen bg-[#0d0d0d] text-white overflow-hidden">
-      {/* Sidebar */}
-      <div className={`${sidebarOpen ? 'w-72' : 'w-0'} transition-all duration-300 bg-[#1a1a1a] border-r border-gray-800 flex flex-col overflow-hidden`}>
-        <div className="p-4 border-b border-gray-800">
-          <button
-            onClick={createNewConversation}
-            className="w-full flex items-center gap-3 px-4 py-3 rounded-xl bg-gradient-to-r from-purple-600/20 to-blue-600/20 border border-purple-500/30 hover:border-purple-500/50 transition-all duration-200 text-sm font-medium"
-          >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            New Chat
-          </button>
-        </div>
-
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
-          {conversations.map(conv => (
-            <div
-              key={conv.id}
-              onClick={() => setActiveConversation(conv.id)}
-              className={`group flex items-center gap-2 px-3 py-2.5 rounded-lg cursor-pointer transition-all duration-150 ${
-                activeConversation === conv.id
-                  ? 'bg-gray-700/50 text-white'
-                  : 'text-gray-400 hover:bg-gray-800/50 hover:text-gray-200'
-              }`}
-            >
-              <svg className="w-4 h-4 flex-shrink-0 opacity-60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-              </svg>
-              <span className="flex-1 text-sm truncate">{conv.title}</span>
-              <button
-                onClick={(e) => deleteConversation(conv.id, e)}
-                className="opacity-0 group-hover:opacity-100 p-1 hover:bg-gray-600 rounded transition-all"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                </svg>
-              </button>
-            </div>
-          ))}
-        </div>
-
-        <div className="p-4 border-t border-gray-800">
-          <div className="flex items-center gap-3 px-3 py-2">
-            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center text-xs font-bold">
-              U
-            </div>
-            <div className="flex-1">
-              <p className="text-sm font-medium">User</p>
-              <p className="text-xs text-gray-500">Free Plan</p>
+    <div className="w-full h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 flex items-center justify-center overflow-hidden">
+      <div className="relative w-full h-full max-w-4xl max-h-[800px] bg-black/50 border-2 border-purple-500/30 rounded-2xl overflow-hidden shadow-2xl shadow-purple-500/20">
+        
+        {/* Score Display */}
+        {gameState === 'playing' && (
+          <div className="absolute top-4 left-4 z-10">
+            <div className="bg-black/70 backdrop-blur-sm px-4 py-2 rounded-lg border border-purple-500/30">
+              <div className="text-purple-400 text-xs font-semibold">SCORE</div>
+              <div className="text-white text-2xl font-bold">{score}</div>
             </div>
           </div>
-        </div>
-      </div>
+        )}
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col min-w-0">
-        {/* Header */}
-        <header className="flex items-center justify-between px-4 py-3 border-b border-gray-800 bg-[#0d0d0d]/80 backdrop-blur-sm">
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-gray-800 rounded-lg transition-colors"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 flex items-center justify-center">
-                <span className="text-white font-bold text-sm">Q</span>
-              </div>
-              <div>
-                <h1 className="text-sm font-semibold">Qwen</h1>
-                <p className="text-xs text-gray-500">General Assistant</p>
-              </div>
+        {/* High Score */}
+        {gameState === 'playing' && (
+          <div className="absolute top-4 right-4 z-10">
+            <div className="bg-black/70 backdrop-blur-sm px-4 py-2 rounded-lg border border-yellow-500/30">
+              <div className="text-yellow-400 text-xs font-semibold">BEST</div>
+              <div className="text-white text-2xl font-bold">{highScore}</div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 text-xs bg-green-500/10 text-green-400 rounded-full border border-green-500/20">
-              ● Online
-            </span>
-          </div>
-        </header>
+        )}
 
-        {/* Messages */}
-        <div className="flex-1 overflow-y-auto">
-          {!currentConversation || currentConversation.messages.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full px-4">
-              <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-500 via-violet-500 to-blue-500 flex items-center justify-center mb-6 shadow-lg shadow-purple-500/20">
-                <span className="text-white font-bold text-3xl">Q</span>
-              </div>
-              <h2 className="text-2xl font-bold mb-2 bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent">
-                How can I help you today?
-              </h2>
-              <p className="text-gray-500 text-center max-w-md mb-8">
-                I'm Qwen, your AI assistant. Ask me anything — from creative writing to code, analysis to advice.
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-w-lg w-full">
-                {[
-                  { icon: '💡', text: 'Explain quantum computing simply' },
-                  { icon: '✍️', text: 'Help me write a creative story' },
-                  { icon: '🔍', text: 'Analyze the pros and cons of...' },
-                  { icon: '💻', text: 'Debug my code and explain why' },
-                ].map((suggestion, i) => (
-                  <button
-                    key={i}
-                    onClick={() => setInput(suggestion.text)}
-                    className="flex items-center gap-3 px-4 py-3 rounded-xl border border-gray-800 hover:border-purple-500/40 hover:bg-gray-800/50 transition-all duration-200 text-left group"
-                  >
-                    <span className="text-xl">{suggestion.icon}</span>
-                    <span className="text-sm text-gray-400 group-hover:text-gray-200 transition-colors">{suggestion.text}</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="max-w-3xl mx-auto px-4 py-6 space-y-6">
-              {currentConversation.messages.map((message) => (
-                <div key={message.id} className={`flex gap-3 ${message.role === 'user' ? 'justify-end' : ''}`}>
-                  {message.role === 'assistant' && (
-                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 mt-1">
-                      <span className="text-white font-bold text-xs">Q</span>
-                    </div>
-                  )}
-                  <div className={`max-w-[80%] ${
-                    message.role === 'user'
-                      ? 'bg-purple-600/20 border border-purple-500/30 rounded-2xl rounded-tr-sm px-4 py-3'
-                      : 'bg-gray-800/50 border border-gray-700/50 rounded-2xl rounded-tl-sm px-4 py-3'
-                  }`}>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">
-                      {message.content.split('**').map((part, i) => 
-                        i % 2 === 1 ? <strong key={i} className="text-purple-300">{part}</strong> : <span key={i}>{part}</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-gray-600 mt-2">
-                      {message.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                    </div>
-                  </div>
-                  {message.role === 'user' && (
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-600 to-gray-700 flex items-center justify-center flex-shrink-0 mt-1">
-                      <span className="text-white font-bold text-xs">U</span>
-                    </div>
-                  )}
-                </div>
-              ))}
-              {isTyping && (
-                <div className="flex gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center flex-shrink-0 mt-1">
-                    <span className="text-white font-bold text-xs">Q</span>
-                  </div>
-                  <div className="bg-gray-800/50 border border-gray-700/50 rounded-2xl rounded-tl-sm px-4 py-3">
-                    <div className="flex gap-1.5">
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                      <div className="w-2 h-2 bg-purple-400 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                    </div>
-                  </div>
+        {/* Menu Screen */}
+        {gameState === 'menu' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
+            <div className="text-center">
+              <h1 className="text-6xl font-black mb-4 bg-gradient-to-r from-purple-400 via-pink-400 to-blue-400 bg-clip-text text-transparent">
+                DODGE!
+              </h1>
+              <p className="text-gray-400 text-lg mb-2">Survive as long as you can</p>
+              <p className="text-gray-500 text-sm mb-8">Use WASD or Arrow Keys to move</p>
+              
+              {highScore > 0 && (
+                <div className="mb-6 text-yellow-400">
+                  <div className="text-sm">High Score</div>
+                  <div className="text-3xl font-bold">{highScore}</div>
                 </div>
               )}
-              <div ref={messagesEndRef} />
-            </div>
-          )}
-        </div>
 
-        {/* Input Area */}
-        <div className="border-t border-gray-800 p-4 bg-[#0d0d0d]">
-          <div className="max-w-3xl mx-auto">
-            <div className="flex items-end gap-3 bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3 focus-within:border-purple-500/50 transition-colors">
-              <textarea
-                ref={textareaRef}
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder="Message Qwen..."
-                rows={1}
-                className="flex-1 bg-transparent text-sm text-white placeholder-gray-500 resize-none outline-none max-h-[200px]"
-              />
               <button
-                onClick={sendMessage}
-                disabled={!input.trim() || isTyping}
-                className={`p-2 rounded-lg transition-all duration-200 ${
-                  input.trim() && !isTyping
-                    ? 'bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-500/20'
-                    : 'bg-gray-800 text-gray-600 cursor-not-allowed'
-                }`}
+                onClick={startGame}
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xl rounded-xl shadow-lg shadow-purple-500/50 transform hover:scale-105 transition-all"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19V5m0 0l-7 7m7-7l7 7" />
-                </svg>
+                START GAME
               </button>
             </div>
-            <p className="text-xs text-gray-600 text-center mt-2">
-              Qwen can make mistakes. Consider checking important information.
-            </p>
           </div>
-        </div>
+        )}
+
+        {/* Game Over Screen */}
+        {gameState === 'gameover' && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center z-20 bg-black/80 backdrop-blur-sm">
+            <div className="text-center">
+              <h2 className="text-5xl font-black mb-4 text-red-500">GAME OVER</h2>
+              
+              <div className="mb-6">
+                <div className="text-gray-400 text-sm mb-1">Score</div>
+                <div className="text-white text-4xl font-bold mb-4">{score}</div>
+                
+                {score >= highScore && score > 0 && (
+                  <div className="text-yellow-400 text-lg font-bold mb-4 animate-pulse">
+                    🎉 NEW HIGH SCORE! 🎉
+                  </div>
+                )}
+              </div>
+
+              <button
+                onClick={startGame}
+                className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-500 hover:to-pink-500 text-white font-bold text-xl rounded-xl shadow-lg shadow-purple-500/50 transform hover:scale-105 transition-all"
+              >
+                PLAY AGAIN
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Game Area */}
+        {gameState === 'playing' && (
+          <>
+            {/* Player */}
+            <div
+              className="absolute w-4 h-4 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-full shadow-lg shadow-cyan-500/50 transform -translate-x-1/2 -translate-y-1/2 transition-none"
+              style={{
+                left: `${playerPos.x}%`,
+                top: `${playerPos.y}%`,
+              }}
+            />
+
+            {/* Obstacles */}
+            {obstacles.map(obs => (
+              <div
+                key={obs.id}
+                className="absolute bg-gradient-to-br from-red-500 to-orange-500 rounded-full shadow-lg shadow-red-500/50 transform -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: `${obs.x}%`,
+                  top: `${obs.y}%`,
+                  width: `${obs.size}px`,
+                  height: `${obs.size}px`,
+                }}
+              />
+            ))}
+
+            {/* Particles */}
+            {particles.map(particle => (
+              <div
+                key={particle.id}
+                className="absolute w-2 h-2 bg-yellow-400 rounded-full transform -translate-x-1/2 -translate-y-1/2"
+                style={{
+                  left: `${particle.x}%`,
+                  top: `${particle.y}%`,
+                  opacity: particle.life,
+                }}
+              />
+            ))}
+          </>
+        )}
       </div>
     </div>
   )
